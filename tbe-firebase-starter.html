@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>T.B.E | Trading British Essentials</title>
+<style>
+*{box-sizing:border-box;font-family:Arial,sans-serif}body{margin:0;padding:20px;background:#0d0d0d;color:#fff;max-width:650px;margin:auto}
+header{text-align:center;margin:12px 0 24px}header h1{font-size:42px;letter-spacing:3px;margin:0}header p,.muted{color:#999}
+.card{background:#1a1a1a;padding:20px;border-radius:18px;margin:14px 0}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px}button{padding:14px;border:0;border-radius:12px;background:white;color:#111;font-weight:bold;font-size:16px;margin-top:10px;width:100%}button.alt{background:#292929;color:white;border:1px solid #444}
+input{width:100%;padding:14px;margin-top:10px;border-radius:10px;border:1px solid #444;background:#222;color:white;font-size:16px}
+.hidden{display:none!important}.balance{font-size:42px;font-weight:bold;overflow-wrap:anywhere}.status{color:#bbb;overflow-wrap:anywhere}.field{padding:9px 0;border-bottom:1px solid #333}
+</style>
+</head>
+<body>
+<header><h1>T.B.E</h1><p>Trading British Essentials</p></header>
+<section id="auth" class="card">
+ <div class="tabs"><button id="tabSign" onclick="choose('signup')">Sign In</button><button id="tabLogin" class="alt" onclick="choose('login')">Log In</button></div>
+ <div id="signup">
+  <h3>Create account</h3>
+  <input id="newUsername" placeholder="Username (3–20 letters, numbers, _)">
+  <input id="newEmail" type="email" autocomplete="email" placeholder="Email address">
+  <input id="newPassword" type="password" autocomplete="new-password" placeholder="Password (at least 6 characters)">
+  <button id="createBtn">Create account</button>
+ </div>
+ <div id="login" class="hidden">
+  <h3>Log in</h3>
+  <input id="email" type="email" autocomplete="email" placeholder="Email address">
+  <input id="password" type="password" autocomplete="current-password" placeholder="Password">
+  <button id="loginBtn">Log in</button>
+ </div>
+ <p id="authMsg" class="status"></p>
+</section>
+<main id="home" class="hidden">
+ <section class="card"><p class="muted">SIGNED IN AS</p><h3 id="who"></h3><p id="rank" class="muted"></p><button id="logoutBtn" class="alt">Log out</button></section>
+ <section class="card"><p class="muted">CURRENT BALANCE</p><div class="balance" id="balance">0 <span style="font-size:18px">TOKENS</span></div><p class="muted">Your Firestore account balance.</p></section>
+ <section class="card"><h3>Account</h3><div id="profile"></div></section>
+ <p id="homeMsg" class="status"></p>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/12.5.0/firebase-app.js";
+import {getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/12.5.0/firebase-auth.js";
+import {getFirestore,doc,setDoc,getDoc} from "https://www.gstatic.com/firebasejs/12.5.0/firebase-firestore.js";
+
+const firebaseConfig={
+ apiKey:"AIzaSyCEaG4EyH0OKkh2_S6soveMESAhWGOB3aQ",
+ authDomain:"tbe-trademarket-currency.firebaseapp.com",
+ projectId:"tbe-trademarket-currency",
+ storageBucket:"tbe-trademarket-currency.firebasestorage.app",
+ messagingSenderId:"923411460993",
+ appId:"1:923411460993:web:91aa0b1ac209789b1f6e80"
+};
+const app=initializeApp(firebaseConfig),auth=getAuth(app),db=getFirestore(app);
+const $=id=>document.getElementById(id);
+window.choose=mode=>{
+ $("signup").classList.toggle("hidden",mode!=="signup");
+ $("login").classList.toggle("hidden",mode!=="login");
+ $("tabSign").classList.toggle("alt",mode!=="signup");
+ $("tabLogin").classList.toggle("alt",mode!=="login");
+ $("authMsg").textContent="";
+};
+const msg=(id,s)=>$(id).textContent=s;
+
+$("createBtn").onclick=async()=>{
+ const username=$("newUsername").value.trim();
+ const email=$("newEmail").value.trim();
+ const password=$("newPassword").value;
+ if(!/^[A-Za-z0-9_]{3,20}$/.test(username)){msg("authMsg","Username must be 3–20 letters, numbers or underscores.");return;}
+ if(!email||password.length<6){msg("authMsg","Enter a valid email and a password with at least 6 characters.");return;}
+ try{
+  const cred=await createUserWithEmailAndPassword(auth,email,password);
+  // Creates the user's private account document under their Auth UID.
+  await setDoc(doc(db,"Usernames",cred.user.uid),{
+   Balance:0,Gmail:cred.user.email,Infinite:false,Role:"member",Username:username
+  });
+  msg("authMsg","Account created.");
+ }catch(e){msg("authMsg",friendly(e));}
+};
+$("loginBtn").onclick=async()=>{
+ try{await signInWithEmailAndPassword(auth,$("email").value.trim(),$("password").value);}
+ catch(e){msg("authMsg",friendly(e));}
+};
+$("logoutBtn").onclick=()=>signOut(auth);
+function friendly(e){
+ const codes={
+ "auth/email-already-in-use":"That email already has an account. Please log in.",
+ "auth/invalid-email":"That email address is invalid.",
+ "auth/weak-password":"Choose a stronger password.",
+ "auth/invalid-credential":"Email or password is incorrect.",
+ "permission-denied":"Firestore denied this action. Check the published rules and account document setup."
+ };
+ return codes[e.code]||("Could not complete: "+e.message);
+}
+onAuthStateChanged(auth,async user=>{
+ if(!user){$("auth").classList.remove("hidden");$("home").classList.add("hidden");return;}
+ $("auth").classList.add("hidden");$("home").classList.remove("hidden");
+ $("who").textContent=user.email||"Signed in";
+ try{
+  const snap=await getDoc(doc(db,"Usernames",user.uid));
+  if(!snap.exists()){
+   msg("homeMsg","Signed in, but your Firestore profile is missing. Ask the site owner to create it safely.");
+   $("balance").textContent="Profile missing";$("profile").textContent="No account document";return;
+  }
+  const d=snap.data();
+  $("who").textContent=d.Username||user.email;
+  $("rank").textContent=d.Role==="admin"?"Admin":"Member";
+  $("balance").innerHTML=d.Infinite?'INF <span style="font-size:18px">TOKENS</span>':`${Number(d.Balance)||0} <span style="font-size:18px">TOKENS</span>`;
+  $("profile").replaceChildren();
+  for(const [k,v] of Object.entries({Username:d.Username,Gmail:d.Gmail,Role:d.Role,Infinite:d.Infinite})){
+   const row=document.createElement("div");row.className="field";row.textContent=k+": "+String(v);$("profile").append(row);
+  }
+  msg("homeMsg","");
+ }catch(e){msg("homeMsg",friendly(e));}
+});
+</script>
+</body>
+</html>
